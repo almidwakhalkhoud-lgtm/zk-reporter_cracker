@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>گزارش تردد دستگاه حضور و غیاب</title>
+<style>
+  :root{
+    --bg:#eef1f8; --card:#ffffff; --ink:#182036; --muted:#68718a;
+    --line:#e3e7f1; --accent:#4f46e5; --accent2:#7c3aed; --accent-soft:#eef0ff;
+    --green:#0d9488; --green-soft:#e0f5f2; --orange:#d97706; --orange-soft:#fdf1de;
+    --shadow:0 10px 30px -12px rgba(49,60,120,.18);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);
+    background:
+      radial-gradient(900px 420px at 85% -100px, rgba(124,58,237,.14), transparent 60%),
+      radial-gradient(800px 400px at 10% -80px, rgba(79,70,229,.16), transparent 60%),
+      var(--bg);
+    font-family:"Segoe UI","Vazirmatn",Tahoma,sans-serif;font-size:15px;line-height:1.7;
+    min-height:100vh}
+  .wrap{max-width:1080px;margin:0 auto;padding:36px 18px 60px}
+
+  header{text-align:center;margin-bottom:28px}
+  header .logo{width:66px;height:66px;border-radius:20px;margin:0 auto 14px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    display:flex;align-items:center;justify-content:center;color:#fff;
+    box-shadow:0 12px 28px -10px rgba(79,70,229,.55)}
+  header .logo svg{width:36px;height:36px}
+  header h1{font-size:23px;margin:0 0 4px;font-weight:800;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  header p{margin:0;color:var(--muted);font-size:13.5px}
+
+  .drop{display:block;position:relative;border-radius:22px;cursor:pointer;
+    background:linear-gradient(var(--card),var(--card)) padding-box,
+      linear-gradient(120deg,#c7cdf5,#ddd1f6,#c7cdf5) border-box;
+    border:2px dashed transparent;
+    box-shadow:var(--shadow);
+    padding:44px 24px 40px;text-align:center;transition:transform .2s, box-shadow .2s}
+  .drop:hover{transform:translateY(-2px);box-shadow:0 16px 38px -14px rgba(49,60,120,.28)}
+  .drop.hover{background:linear-gradient(var(--accent-soft),var(--accent-soft)) padding-box,
+      linear-gradient(120deg,var(--accent),var(--accent2)) border-box;
+    transform:scale(1.01)}
+  .drop input{display:none}
+  .drop .icon{width:84px;height:84px;margin:0 auto 18px;border-radius:50%;
+    background:linear-gradient(135deg,var(--accent-soft),#f3eefe);
+    display:flex;align-items:center;justify-content:center;position:relative}
+  .drop .icon svg{width:44px;height:44px;color:var(--accent)}
+  .drop .icon::after{content:'';position:absolute;inset:-9px;border-radius:50%;
+    border:2px dashed #c9c4f2;animation:spin 24s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .drop.hover .icon svg{animation:bounce .5s ease infinite alternate}
+  @keyframes bounce{to{transform:translateY(-5px)}}
+  .drop .big{font-size:18px;font-weight:700;margin-bottom:6px}
+  .drop .hint{color:var(--muted);font-size:13.5px;max-width:440px;margin:0 auto 20px}
+  .drop .fakebtn{display:inline-flex;align-items:center;gap:8px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+    border-radius:12px;padding:10px 28px;font-weight:700;font-size:14.5px;
+    box-shadow:0 8px 20px -8px rgba(79,70,229,.6)}
+  .drop .types{margin-top:18px;color:#9aa1b8;font-size:12px;
+    display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap}
+  .drop .types span{display:inline-flex;align-items:center;gap:5px}
+  .drop .types b{background:#f1f3fa;border:1px solid var(--line);border-radius:6px;
+    padding:1px 8px;font-weight:600;color:#5b6478;direction:ltr}
+
+  .error{background:#fdecec;border:1px solid #f5c2c2;color:#9b1c1c;
+    border-radius:14px;padding:14px 18px;margin-top:16px;display:none;box-shadow:var(--shadow)}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:26px 0 22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .card::before{content:'';position:absolute;inset-inline-start:0;top:14px;bottom:14px;width:4px;
+    border-radius:4px;background:linear-gradient(var(--accent),var(--accent2))}
+  .card .k{color:var(--muted);font-size:12px;margin-bottom:4px}
+  .card .v{font-size:19px;font-weight:800}
+  .card .v.small{font-size:14px;font-weight:700;direction:ltr;text-align:right}
+
+  .tabs{display:flex;gap:6px;margin:8px 0 16px;flex-wrap:wrap;
+    background:#e6e9f4;border-radius:14px;padding:5px;width:fit-content}
+  .tab{border:none;background:transparent;border-radius:10px;
+    padding:8px 22px;cursor:pointer;font-size:14px;font-family:inherit;color:#4b5570;font-weight:600;
+    transition:.15s}
+  .tab.active{background:var(--card);color:var(--accent);box-shadow:0 3px 10px -3px rgba(49,60,120,.25)}
+
+  .toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+  .toolbar select{border:1px solid var(--line);border-radius:11px;
+    padding:8px 12px;background:var(--card);font-family:inherit;font-size:14px;color:var(--ink);
+    box-shadow:var(--shadow)}
+  .toolbar .spacer{flex:1}
+  .toolbar label{font-size:13.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .toolbar input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+  .btn{border:none;border-radius:11px;padding:9px 20px;cursor:pointer;font-family:inherit;
+    font-size:14px;color:#fff;font-weight:700;transition:.15s;
+    background:linear-gradient(135deg,var(--green),#0ea5a0);
+    box-shadow:0 8px 18px -8px rgba(13,148,136,.55)}
+  .btn:hover{filter:brightness(1.07)}
+  .btn.gray{background:linear-gradient(135deg,#64748b,#7c8aa0);
+    box-shadow:0 8px 18px -8px rgba(100,116,139,.5)}
+
+  .tblwrap{background:var(--card);border:1px solid var(--line);border-radius:18px;
+    overflow:auto;box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:640px}
+  th{background:#f4f6fc;font-size:12.5px;color:#4b5570;text-align:right;
+    padding:11px 14px;position:sticky;top:0;white-space:nowrap;
+    border-bottom:1px solid var(--line)}
+  td{padding:10px 14px;border-top:1px solid #eef1f8;font-size:14px;white-space:nowrap}
+  tbody tr:nth-child(even) td{background:#fafbfe}
+  tr:hover td{background:var(--accent-soft)}
+  .num{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+  .badge{display:inline-block;border-radius:999px;padding:2px 13px;font-size:12.5px;font-weight:700}
+  .b-in{background:var(--green-soft);color:var(--green)}
+  .b-out{background:var(--orange-soft);color:var(--orange)}
+  .b-other{background:#eef1f6;color:#5b6478}
+  .empty{padding:44px;text-align:center;color:var(--muted)}
+  footer{margin-top:30px;color:#9aa1b8;font-size:12.5px;text-align:center}
+  #report{display:none;animation:fadeup .4s ease}
+  @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+  #printhead{display:none}
+
+  @media print{
+    @page{size:A4;margin:14mm 12mm}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;
+      animation:none!important;box-shadow:none!important}
+    body{background:#fff!important;font-size:12px}
+    .wrap{max-width:none;padding:0}
+    header,.drop,.tabs,.toolbar,.cards,footer,.error{display:none!important}
+    #report{display:block!important}
+
+    #printhead{display:block!important;margin-bottom:12px;
+      border-bottom:3px solid var(--accent);padding-bottom:10px}
+    #printhead .ph-row{display:flex;align-items:center;gap:12px}
+    #printhead .ph-logo{width:40px;height:40px;border-radius:11px;flex:0 0 auto;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex;align-items:center;justify-content:center;color:#fff}
+    #printhead .ph-logo svg{width:24px;height:24px}
+    #printhead .ph-title{font-size:16px;font-weight:800;color:#1c2333}
+    #printhead .ph-sub{font-size:11px;color:#68718a;margin-top:1px}
+    #printhead .ph-meta{display:flex;flex-wrap:wrap;gap:6px 0;margin-top:10px;
+      background:#f4f5fd;border:1px solid #e3e5f5;border-radius:8px;padding:7px 12px;
+      font-size:10.5px;color:#3b465e}
+    #printhead .ph-meta span{display:inline-flex;align-items:center}
+    #printhead .ph-meta span:not(:last-child)::after{content:'';display:inline-block;
+      width:1px;height:11px;background:#c9cde5;margin:0 12px}
+    #printhead .ph-meta b{font-weight:700;margin-inline-start:4px;direction:ltr}
+
+    .tblwrap{overflow:visible!important;border:none;border-radius:0}
+    table{min-width:0!important;width:100%!important;font-size:10.5px}
+    thead{display:table-header-group}
+    th{position:static!important;background:#3f38c9!important;color:#fff!important;
+      font-size:10px;padding:7px 8px!important;border:none!important}
+    td{padding:5.5px 8px!important;white-space:normal!important;
+      border-top:1px solid #e2e5f0!important;color:#1c2333}
+    tbody tr:nth-child(even) td{background:#f3f4fb!important}
+    tr{page-break-inside:avoid}
+    tr:hover td{background:inherit}
+    .badge{border-radius:4px;padding:1px 8px;font-size:9.5px}
+    .b-in{background:#dcf2ef!important;color:#0b6e64!important}
+    .b-out{background:#faecd4!important;color:#a35a05!important}
+    .empty{padding:20px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M12 11a3 3 0 0 0-3 3c0 1.8-.3 3.5-1 5"/>
+        <path d="M12 11a3 3 0 0 1 3 3c0 2.2.3 4-.5 6"/>
+        <path d="M12 7.5A6.5 6.5 0 0 0 5.5 14c0 2.5-.4 4.5-1.2 6.3"/>
+        <path d="M12 7.5a6.5 6.5 0 0 1 6.5 6.5c0 1.3.1 2.6.4 3.8"/>
+        <path d="M12 4a10 10 0 0 0-8 4"/>
+        <path d="M12 4a10 10 0 0 1 8 4"/>
+        <path d="M12 14v4"/>
+      </svg>
+    </div>
+    <h1>گزارش تردد دستگاه حضور و غیاب</h1>
+    <p>فایل بکاپ دستگاه اثرانگشت را انتخاب کنید تا جدول ورود و خروج اعضا ساخته شود</p>
+  </header>
+
+  <label class="drop" id="drop">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    </div>
+    <div class="big">فایل بکاپ دستگاه را اینجا رها کنید</div>
+    <div class="hint">فایل <b style="direction:ltr">backupdata.dat</b> که از دستگاه ZKTeco خروجی گرفته‌اید را بکشید و اینجا رها کنید، یا روی دکمهٔ زیر بزنید</div>
+    <span class="fakebtn">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      انتخاب فایل
+    </span>
+    <div class="types">
+      <span>فرمت پشتیبانی‌شده: <b>.dat</b></span>
+      <span>•</span>
+      <span>پردازش کاملاً آفلاین روی سیستم شما</span>
+    </div>
+    <input type="file" id="file" accept=".dat,application/octet-stream">
+  </label>
+  <div class="error" id="error"></div>
+
+  <div id="report">
+    <div class="cards">
+      <div class="card"><div class="k">شماره سریال دستگاه</div><div class="v small" id="c-serial">—</div></div>
+      <div class="card"><div class="k">تاریخ تهیهٔ بکاپ</div><div class="v small" id="c-export">—</div></div>
+      <div class="card"><div class="k">تعداد اعضا</div><div class="v" id="c-users">—</div></div>
+      <div class="card"><div class="k">تعداد ثبت تردد</div><div class="v" id="c-logs">—</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="log">ریز ترددها</button>
+      <button class="tab" data-tab="daily">خلاصه روزانه</button>
+      <button class="tab" data-tab="users">اعضا</button>
+    </div>
+
+    <div class="toolbar">
+      <select id="f-user"><option value="">همهٔ اعضا</option></select>
+      <label style="font-size:13.5px;color:var(--muted)">
+        <input type="checkbox" id="f-dedup" checked>
+        حذف ثبت‌های تکراری (فاصلهٔ کمتر از ۲ دقیقه)
+      </label>
+      <div class="spacer"></div>
+      <button class="btn" id="btn-csv">خروجی اکسل (xlsx)</button>
+      <button class="btn gray" id="btn-print">چاپ</button>
+    </div>
+
+    <div id="printhead">
+      <div class="ph-row">
+        <div class="ph-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <path d="M12 11a3 3 0 0 0-3 3c0 1.8-.3 3.5-1 5"/>
+            <path d="M12 11a3 3 0 0 1 3 3c0 2.2.3 4-.5 6"/>
+            <path d="M12 7.5A6.5 6.5 0 0 0 5.5 14c0 2.5-.4 4.5-1.2 6.3"/>
+            <path d="M12 7.5a6.5 6.5 0 0 1 6.5 6.5c0 1.3.1 2.6.4 3.8"/>
+            <path d="M12 4a10 10 0 0 0-8 4"/>
+            <path d="M12 4a10 10 0 0 1 8 4"/>
+          </svg>
+        </div>
+        <div>
+          <div class="ph-title" id="ph-title">گزارش تردد</div>
+          <div class="ph-sub">سامانهٔ گزارش‌گیری دستگاه حضور و غیاب</div>
+        </div>
+      </div>
+      <div class="ph-meta" id="ph-meta"></div>
+    </div>
+
+    <div class="tblwrap" id="tbl"></div>
+  </div>
+
+  <footer>این ابزار به‌صورت آفلاین کار می‌کند و هیچ داده‌ای را ارسال نمی‌کند.</footer>
+</div>
+
+<script>
+// ZKTeco backupdata.dat parser — pure functions, no DOM.
+// Container layout: text header (magic, serial, timestamp) + gzip stream
+// holding a tar archive that contains ZKDB.db (SQLite).
+
+function zkReadCString(u8, off, max) {
+  let end = off;
+  const lim = Math.min(off + max, u8.length);
+  while (end < lim && u8[end] !== 0) end++;
+  let s = '';
+  for (let i = off; i < end; i++) s += String.fromCharCode(u8[i]);
+  return s;
+}
+
+function zkFindGzip(u8) {
+  for (let i = 0; i + 2 < u8.length; i++) {
+    if (u8[i] === 0x1f && u8[i + 1] === 0x8b && u8[i + 2] === 0x08) return i;
+  }
+  return -1;
+}
+
+function zkParseTar(u8) {
+  const files = [];
+  let off = 0;
+  while (off + 512 <= u8.length) {
+    const name = zkReadCString(u8, off, 100);
+    if (!name) break;
+    const sizeStr = zkReadCString(u8, off + 124, 12).trim();
+    const size = parseInt(sizeStr, 8) || 0;
+    files.push({ name, data: u8.subarray(off + 512, off + 512 + size) });
+    off += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
+// --- Minimal SQLite table-btree reader ---
+class MiniSQLite {
+  constructor(u8) {
+    if (zkReadCString(u8, 0, 16) !== 'SQLite format 3') throw new Error('not sqlite');
+    this.u8 = u8;
+    this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    let ps = this.dv.getUint16(16);
+    if (ps === 1) ps = 65536;
+    this.pageSize = ps;
+    this.usable = ps - u8[20];
+  }
+  pageOff(n) { return (n - 1) * this.pageSize; }
+  varint(off) {
+    let v = 0n;
+    for (let i = 0; i < 9; i++) {
+      const b = this.u8[off + i];
+      if (i === 8) { v = (v << 8n) | BigInt(b); return [v, off + 9]; }
+      v = (v << 7n) | BigInt(b & 0x7f);
+      if (!(b & 0x80)) return [v, off + i + 1];
+    }
+  }
+  readPayload(off, total) {
+    // returns Uint8Array of `total` bytes starting at cell payload offset,
+    // following overflow chain if needed
+    const U = this.usable, X = U - 35;
+    if (total <= X) return this.u8.subarray(off, off + total);
+    const M = Math.floor((U - 12) * 32 / 255) - 23;
+    const K = M + ((total - M) % (U - 4));
+    const local = K <= X ? K : M;
+    const out = new Uint8Array(total);
+    out.set(this.u8.subarray(off, off + local), 0);
+    let written = local;
+    let next = this.dv.getUint32(off + local);
+    while (next && written < total) {
+      const po = this.pageOff(next);
+      next = this.dv.getUint32(po);
+      const chunk = Math.min(U - 4, total - written);
+      out.set(this.u8.subarray(po + 4, po + 4 + chunk), written);
+      written += chunk;
+    }
+    return out;
+  }
+  decodeRecord(payload) {
+    const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    const rd = (off) => { // varint within payload
+      let v = 0n;
+      for (let i = 0; i < 9; i++) {
+        const b = payload[off + i];
+        if (i === 8) { v = (v << 8n) | BigInt(b); return [v, off + 9]; }
+        v = (v << 7n) | BigInt(b & 0x7f);
+        if (!(b & 0x80)) return [v, off + i + 1];
+      }
+    };
+    let [hdrLen, p] = rd(0);
+    const types = [];
+    while (p < Number(hdrLen)) { const [t, np] = rd(p); types.push(Number(t)); p = np; }
+    let body = Number(hdrLen);
+    const vals = [];
+    for (const t of types) {
+      if (t === 0) vals.push(null);
+      else if (t >= 1 && t <= 6) {
+        const n = [1, 2, 3, 4, 6, 8][t - 1];
+        let v = 0n;
+        for (let i = 0; i < n; i++) v = (v << 8n) | BigInt(payload[body + i]);
+        // sign-extend
+        const bits = BigInt(n * 8);
+        if (v >= (1n << (bits - 1n))) v -= (1n << bits);
+        vals.push(n <= 6 ? Number(v) : (v >= -9007199254740991n && v <= 9007199254740991n ? Number(v) : v));
+        body += n;
+      } else if (t === 7) { vals.push(dv.getFloat64(body)); body += 8; }
+      else if (t === 8) vals.push(0);
+      else if (t === 9) vals.push(1);
+      else if (t >= 13 && t % 2 === 1) {
+        const n = (t - 13) / 2;
+        vals.push(new TextDecoder().decode(payload.subarray(body, body + n)));
+        body += n;
+      } else if (t >= 12) {
+        const n = (t - 12) / 2;
+        vals.push(payload.slice(body, body + n));
+        body += n;
+      }
+    }
+    return vals;
+  }
+  walkTable(rootPage, cb) {
+    const po = this.pageOff(rootPage);
+    const hdr = po + (rootPage === 1 ? 100 : 0);
+    const type = this.u8[hdr];
+    const nCells = this.dv.getUint16(hdr + 3);
+    const cellPtrBase = hdr + (type === 5 ? 12 : 8);
+    if (type === 13) { // leaf table
+      for (let i = 0; i < nCells; i++) {
+        let off = po + this.dv.getUint16(cellPtrBase + i * 2);
+        const [plen, o1] = this.varint(off);
+        const [rowid, o2] = this.varint(o1);
+        const payload = this.readPayload(o2, Number(plen));
+        cb(Number(rowid), this.decodeRecord(payload));
+      }
+    } else if (type === 5) { // interior table
+      for (let i = 0; i < nCells; i++) {
+        const off = po + this.dv.getUint16(cellPtrBase + i * 2);
+        this.walkTable(this.dv.getUint32(off), cb);
+      }
+      this.walkTable(this.dv.getUint32(hdr + 8), cb); // right-most pointer
+    }
+  }
+  tables() {
+    const out = {};
+    this.walkTable(1, (rowid, rec) => {
+      // sqlite_master: type, name, tbl_name, rootpage, sql
+      if (rec[0] === 'table') out[rec[1]] = { rootpage: rec[3], sql: rec[4] };
+    });
+    return out;
+  }
+  columnsFromSql(sql) {
+    const m = sql.match(/\(([\s\S]*)\)/);
+    if (!m) return [];
+    const cols = [];
+    let depth = 0, cur = '';
+    for (const ch of m[1]) {
+      if (ch === '(') depth++;
+      if (ch === ')') depth--;
+      if (ch === ',' && depth === 0) { cols.push(cur); cur = ''; } else cur += ch;
+    }
+    cols.push(cur);
+    return cols
+      .map(c => c.trim().replace(/^["'`\[]/, '').split(/["'`\]\s]/)[0])
+      .filter(c => c && !/^(PRIMARY|UNIQUE|CHECK|FOREIGN|CONSTRAINT)$/i.test(c));
+  }
+  readTableRows(name) {
+    const t = this.tables()[name];
+    if (!t) return null;
+    const cols = this.columnsFromSql(t.sql);
+    const rows = [];
+    this.walkTable(t.rootpage, (rowid, rec) => {
+      const obj = {};
+      cols.forEach((c, i) => { obj[c] = rec[i] === undefined ? null : rec[i]; });
+      // INTEGER PRIMARY KEY columns are stored as null in record; use rowid
+      cols.forEach((c, i) => { if (obj[c] === null && /^id$/i.test(c)) obj[c] = rowid; });
+      rows.push(obj);
+    });
+    return rows;
+  }
+}
+
+// inflate: async (Uint8Array) => Uint8Array   (gzip decompress, impl provided by host)
+async function zkParseBackup(u8, inflate) {
+  const magic = zkReadCString(u8, 0, 32);
+  if (!magic.startsWith('ZK format')) throw new Error('این فایل بکاپ دستگاه ZKTeco نیست (هدر «ZK format» پیدا نشد)');
+  const serial = zkReadCString(u8, 0x20, 64);
+  const exportedAt = zkReadCString(u8, 0xa0, 32);
+  const gzOff = zkFindGzip(u8);
+  if (gzOff < 0) throw new Error('بخش فشرده‌شدهٔ داده در فایل پیدا نشد');
+  const tarBytes = await inflate(u8.subarray(gzOff));
+  const files = zkParseTar(tarBytes);
+  const dbFile = files.find(f => f.name.toLowerCase().endsWith('.db'));
+  if (!dbFile) throw new Error('دیتابیس ZKDB.db داخل فایل پیدا نشد');
+  const db = new MiniSQLite(dbFile.data);
+  const users = db.readTableRows('USER_INFO') || [];
+  const logs = db.readTableRows('ATT_LOG') || [];
+  return { magic, serial, exportedAt, users, logs };
+}
+
+if (typeof module !== 'undefined') module.exports = { zkParseBackup, MiniSQLite, zkParseTar, zkFindGzip };
+
+</script>
+<script>
+const $ = id => document.getElementById(id);
+let DATA = null;          // {serial, exportedAt, users, logs}
+let ACTIVE = 'log';
+
+const STATUS_FA = {0:'ورود',1:'خروج',2:'خروج استراحت',3:'ورود استراحت',4:'ورود اضافه‌کار',5:'خروج اضافه‌کار'};
+const STATUS_KIND = {0:'in',1:'out',2:'out',3:'in',4:'in',5:'out'};
+const VERIFY_FA = {0:'رمز',1:'اثر انگشت',2:'شناسه',3:'رمز',4:'کارت',15:'چهره'};
+
+const faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'});
+const faDow  = new Intl.DateTimeFormat('fa-IR',{weekday:'long'});
+function jalali(d){ return faDate.format(d); }
+function timeOf(d){ return d.toTimeString().slice(0,8); }
+function faNum(s){ return String(s).replace(/[0-9]/g, c => '۰۱۲۳۴۵۶۷۸۹'[c]); }
+
+async function inflateBrowser(u8){
+  const ds = new DecompressionStream('gzip');
+  const stream = new Blob([u8]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function prepare(data){
+  const nameByPin = {};
+  data.users.forEach(u => nameByPin[String(u.User_PIN)] = u.Name || ('عضو ' + u.User_PIN));
+  data.rows = data.logs
+    .filter(l => l.Verify_Time)
+    .map(l => {
+      const d = new Date(l.Verify_Time);
+      return {
+        pin: String(l.User_PIN),
+        name: nameByPin[String(l.User_PIN)] || ('عضو ' + l.User_PIN),
+        d, iso: l.Verify_Time,
+        status: l.Status, verify: l.Verify_Type,
+      };
+    })
+    .sort((a,b) => a.d - b.d);
+  return data;
+}
+
+function filteredRows(){
+  const pin = $('f-user').value;
+  let rows = DATA.rows.filter(r => !pin || r.pin === pin);
+  if ($('f-dedup').checked){
+    const out = [];
+    const last = {};
+    for (const r of rows){
+      const prev = last[r.pin];
+      if (prev && (r.d - prev) < 120000) continue;
+      last[r.pin] = r.d;
+      out.push(r);
+    }
+    rows = out;
+  }
+  return rows;
+}
+
+function renderLog(rows){
+  if (!rows.length) return '<div class="empty">رکوردی یافت نشد</div>';
+  let h = '<table><thead><tr><th>ردیف</th><th>نام</th><th>شناسه</th><th>تاریخ (شمسی)</th><th>روز</th><th>ساعت</th><th>نوع ثبت</th><th>روش تأیید</th></tr></thead><tbody>';
+  rows.forEach((r,i) => {
+    const kind = STATUS_KIND[r.status] || 'other';
+    const label = STATUS_FA[r.status] ?? ('کد ' + r.status);
+    h += `<tr><td>${faNum(i+1)}</td><td>${r.name}</td><td>${faNum(r.pin)}</td>`+
+         `<td class="num">${jalali(r.d)}</td><td>${faDow.format(r.d)}</td>`+
+         `<td class="num">${faNum(timeOf(r.d))}</td>`+
+         `<td><span class="badge b-${kind}">${label}</span></td>`+
+         `<td>${VERIFY_FA[r.verify] ?? ('کد '+r.verify)}</td></tr>`;
+  });
+  return h + '</tbody></table>';
+}
+
+function dailySummary(rows){
+  const groups = {};
+  for (const r of rows){
+    const key = r.pin + '|' + r.d.toISOString().slice(0,10);
+    (groups[key] = groups[key] || []).push(r);
+  }
+  return Object.values(groups).map(g => {
+    const first = g[0], last = g[g.length-1];
+    const durMs = last.d - first.d;
+    return { name:first.name, pin:first.pin, d:first.d,
+      first: timeOf(first.d), last: g.length > 1 ? timeOf(last.d) : null,
+      count: g.length, durMs };
+  }).sort((a,b) => a.d - b.d || a.pin.localeCompare(b.pin));
+}
+
+function fmtDur(ms){
+  if (ms <= 0) return '—';
+  const m = Math.round(ms/60000);
+  return faNum(Math.floor(m/60)) + ' ساعت و ' + faNum(m%60) + ' دقیقه';
+}
+
+function renderDaily(rows){
+  const days = dailySummary(rows);
+  if (!days.length) return '<div class="empty">رکوردی یافت نشد</div>';
+  let h = '<table><thead><tr><th>نام</th><th>تاریخ (شمسی)</th><th>روز</th><th>اولین ثبت</th><th>آخرین ثبت</th><th>مدت حضور*</th><th>تعداد ثبت</th></tr></thead><tbody>';
+  days.forEach(x => {
+    h += `<tr><td>${x.name}</td><td class="num">${jalali(x.d)}</td><td>${faDow.format(x.d)}</td>`+
+         `<td class="num">${faNum(x.first)}</td><td class="num">${x.last?faNum(x.last):'—'}</td>`+
+         `<td>${x.last?fmtDur(x.durMs):'—'}</td><td>${faNum(x.count)}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  h += '<div style="padding:10px 14px;color:var(--muted);font-size:12.5px">* فاصلهٔ اولین تا آخرین ثبتِ همان روز؛ اگر فقط یک ثبت وجود داشته باشد قابل محاسبه نیست.</div>';
+  return h;
+}
+
+function renderUsers(){
+  let h = '<table><thead><tr><th>شناسه</th><th>نام</th><th>سطح دسترسی</th><th>تاریخ تعریف</th><th>تعداد تردد ثبت‌شده</th></tr></thead><tbody>';
+  DATA.users.forEach(u => {
+    const pin = String(u.User_PIN);
+    const n = DATA.rows.filter(r => r.pin === pin).length;
+    const created = u.CREATE_ID && /^\d{4}-/.test(u.CREATE_ID) ? jalali(new Date(u.CREATE_ID)) : '—';
+    h += `<tr><td>${faNum(pin)}</td><td>${u.Name || '—'}</td>`+
+         `<td>${u.Privilege ? 'مدیر' : 'کاربر عادی'}</td>`+
+         `<td class="num">${created}</td><td>${faNum(n)}</td></tr>`;
+  });
+  return h + '</tbody></table>';
+}
+
+const TAB_TITLE = {log:'گزارش ریز ترددها', daily:'گزارش خلاصهٔ روزانه', users:'فهرست اعضا'};
+
+function updatePrintHead(rowCount){
+  $('ph-title').textContent = TAB_TITLE[ACTIVE];
+  const pin = $('f-user').value;
+  const member = pin ? ($('f-user').selectedOptions[0].textContent) : 'همهٔ اعضا';
+  const meta = [
+    ['سریال دستگاه', DATA.serial || '—'],
+    ['تاریخ بکاپ', DATA.exportedAt ? jalali(new Date(DATA.exportedAt)) : '—'],
+    ['عضو', member],
+    ['تعداد ردیف', faNum(rowCount)],
+    ['تاریخ تهیهٔ گزارش', jalali(new Date())],
+  ];
+  $('ph-meta').innerHTML = meta.map(([k,v]) => `<span>${k}: <b>${v}</b></span>`).join('');
+}
+
+function render(){
+  const rows = filteredRows();
+  $('tbl').innerHTML = ACTIVE === 'log' ? renderLog(rows)
+                     : ACTIVE === 'daily' ? renderDaily(rows)
+                     : renderUsers();
+  updatePrintHead(ACTIVE === 'log' ? rows.length
+                : ACTIVE === 'daily' ? dailySummary(rows).length
+                : DATA.users.length);
+}
+
+// ---------- خروجی اکسل (xlsx) بدون کتابخانه ----------
+const CRC_T = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++){
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c;
+  }
+  return t;
+})();
+function crc32(u8){
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function makeZip(entries){ // entries: [{name, text}] — بدون فشرده‌سازی (stored)
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let off = 0, cdSize = 0;
+  for (const e of entries){
+    const name = enc.encode(e.name), data = enc.encode(e.text);
+    const crc = crc32(data), sz = data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true);
+    lh.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(lh.buffer), name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true);
+    ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    off += 30 + name.length + sz;
+  }
+  central.forEach(p => cdSize += p.length);
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, entries.length, true); eocd.setUint16(10, entries.length, true);
+  eocd.setUint32(12, cdSize, true); eocd.setUint32(16, off, true);
+  parts.push(...central, new Uint8Array(eocd.buffer));
+  return new Blob(parts, {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function xmlEsc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function colRef(i){
+  let s = ''; i++;
+  while (i){ i--; s = String.fromCharCode(65 + i % 26) + s; i = Math.floor(i / 26); }
+  return s;
+}
+// styles: 1=عنوان 2=زیرعنوان 3=سربرگ 4=سلول 5=سلول(زبرا)
+function buildSheet(title, subtitle, headers, rows, widths){
+  const nCols = headers.length;
+  let xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetViews><sheetView rightToLeft="1" workbookViewId="0" showGridLines="0"/></sheetViews>' +
+    '<sheetFormatPr defaultRowHeight="20"/>' +
+    '<cols>' + widths.map((w,i) => `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('') + '</cols>' +
+    '<sheetData>';
+  const cell = (r, c, v, s) => typeof v === 'number'
+    ? `<c r="${colRef(c)}${r}" s="${s}" t="n"><v>${v}</v></c>`
+    : `<c r="${colRef(c)}${r}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xmlEsc(v ?? '')}</t></is></c>`;
+  // ردیف عنوان و زیرعنوان (ادغام‌شده)
+  xml += `<row r="1" ht="30" customHeight="1">` + cell(1, 0, title, 1) +
+    Array.from({length:nCols-1},(_,i)=>`<c r="${colRef(i+1)}1" s="1"/>`).join('') + '</row>';
+  xml += `<row r="2" ht="18" customHeight="1">` + cell(2, 0, subtitle, 2) +
+    Array.from({length:nCols-1},(_,i)=>`<c r="${colRef(i+1)}2" s="2"/>`).join('') + '</row>';
+  xml += `<row r="3" ht="24" customHeight="1">` +
+    headers.map((h,c) => cell(3, c, h, 3)).join('') + '</row>';
+  rows.forEach((row, ri) => {
+    const s = ri % 2 ? 5 : 4;
+    xml += `<row r="${ri+4}" ht="19" customHeight="1">` +
+      row.map((v,c) => cell(ri+4, c, v, s)).join('') + '</row>';
+  });
+  xml += '</sheetData>' +
+    `<mergeCells count="2"><mergeCell ref="A1:${colRef(nCols-1)}1"/><mergeCell ref="A2:${colRef(nCols-1)}2"/></mergeCells>` +
+    '</worksheet>';
+  return xml;
+}
+const XLSX_STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+'<fonts count="4">' +
+'<font><sz val="10"/><name val="Tahoma"/><color rgb="FF1C2333"/></font>' +
+'<font><b/><sz val="10"/><name val="Tahoma"/><color rgb="FFFFFFFF"/></font>' +
+'<font><b/><sz val="13"/><name val="Tahoma"/><color rgb="FF3730A3"/></font>' +
+'<font><sz val="9"/><name val="Tahoma"/><color rgb="FF68718A"/></font>' +
+'</fonts>' +
+'<fills count="5">' +
+'<fill><patternFill patternType="none"/></fill>' +
+'<fill><patternFill patternType="gray125"/></fill>' +
+'<fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/><bgColor indexed="64"/></patternFill></fill>' +
+'<fill><patternFill patternType="solid"><fgColor rgb="FFF3F4FB"/><bgColor indexed="64"/></patternFill></fill>' +
+'<fill><patternFill patternType="solid"><fgColor rgb="FFEEF0FF"/><bgColor indexed="64"/></patternFill></fill>' +
+'</fills>' +
+'<borders count="2">' +
+'<border><left/><right/><top/><bottom/><diagonal/></border>' +
+'<border>' +
+'<left style="thin"><color rgb="FFD5DAE8"/></left><right style="thin"><color rgb="FFD5DAE8"/></right>' +
+'<top style="thin"><color rgb="FFD5DAE8"/></top><bottom style="thin"><color rgb="FFD5DAE8"/></bottom><diagonal/>' +
+'</border>' +
+'</borders>' +
+'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+'<cellXfs count="6">' +
+'<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+'<xf numFmtId="0" fontId="2" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+'<xf numFmtId="0" fontId="3" fillId="4" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+'<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+'<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+'<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+'</cellXfs>' +
+'</styleSheet>';
+
+function buildXlsxBlob(){
+  const rows = filteredRows();
+  const pin = $('f-user').value;
+  const member = pin ? $('f-user').selectedOptions[0].textContent : 'همهٔ اعضا';
+  const subtitle = `دستگاه ${DATA.serial} | بکاپ: ${DATA.exportedAt ? jalali(new Date(DATA.exportedAt)) : '—'} | عضو: ${member} | تهیهٔ گزارش: ${jalali(new Date())}`;
+  let headers, data, widths, fname, sheetName;
+  if (ACTIVE === 'daily'){
+    headers = ['نام','شناسه','تاریخ (شمسی)','تاریخ میلادی','روز','اولین ثبت','آخرین ثبت','مدت حضور','تعداد ثبت'];
+    widths  = [16, 9, 13, 13, 11, 11, 11, 20, 10];
+    data = dailySummary(rows).map(x => [x.name, faNum(x.pin), jalali(x.d), x.d.toISOString().slice(0,10),
+      faDow.format(x.d), faNum(x.first), x.last ? faNum(x.last) : '—', x.last ? fmtDur(x.durMs) : '—', x.count]);
+    fname = 'گزارش خلاصه روزانه.xlsx'; sheetName = 'خلاصه روزانه';
+  } else if (ACTIVE === 'users'){
+    headers = ['شناسه','نام','سطح دسترسی','تعداد تردد ثبت‌شده'];
+    widths  = [10, 20, 14, 18];
+    data = DATA.users.map(u => [faNum(String(u.User_PIN)), u.Name || '—',
+      u.Privilege ? 'مدیر' : 'کاربر عادی', DATA.rows.filter(r => r.pin === String(u.User_PIN)).length]);
+    fname = 'فهرست اعضا.xlsx'; sheetName = 'اعضا';
+  } else {
+    headers = ['ردیف','نام','شناسه','تاریخ (شمسی)','تاریخ میلادی','روز','ساعت','نوع ثبت','روش تأیید'];
+    widths  = [7, 16, 9, 13, 13, 11, 11, 15, 12];
+    data = rows.map((r,i) => [i+1, r.name, faNum(r.pin), jalali(r.d), r.iso.slice(0,10),
+      faDow.format(r.d), faNum(timeOf(r.d)), STATUS_FA[r.status] ?? ('کد '+r.status), VERIFY_FA[r.verify] ?? ('کد '+r.verify)]);
+    fname = 'گزارش ریز ترددها.xlsx'; sheetName = 'ریز ترددها';
+  }
+  const sheet = buildSheet(TAB_TITLE[ACTIVE], subtitle, headers, data, widths);
+  const blob = makeZip([
+    {name:'[Content_Types].xml', text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '</Types>'},
+    {name:'_rels/.rels', text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>'},
+    {name:'xl/workbook.xml', text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      `<sheets><sheet name="${xmlEsc(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`},
+    {name:'xl/_rels/workbook.xml.rels', text:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>'},
+    {name:'xl/styles.xml', text:XLSX_STYLES},
+    {name:'xl/worksheets/sheet1.xml', text:sheet},
+  ]);
+  return {blob, fname};
+}
+
+function exportXlsx(){
+  const {blob, fname} = buildXlsxBlob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = fname;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function handleFile(file){
+  $('error').style.display = 'none';
+  try {
+    const u8 = new Uint8Array(await file.arrayBuffer());
+    DATA = prepare(await zkParseBackup(u8, inflateBrowser));
+    $('c-serial').textContent = DATA.serial || '—';
+    $('c-export').textContent = DATA.exportedAt ? jalali(new Date(DATA.exportedAt)) + ' ' + DATA.exportedAt.slice(11,16) : '—';
+    $('c-users').textContent = faNum(DATA.users.length);
+    $('c-logs').textContent = faNum(DATA.rows.length);
+    const sel = $('f-user');
+    sel.innerHTML = '<option value="">همهٔ اعضا</option>';
+    DATA.users.forEach(u => {
+      const o = document.createElement('option');
+      o.value = String(u.User_PIN);
+      o.textContent = (u.Name || 'عضو') + ' (' + u.User_PIN + ')';
+      sel.appendChild(o);
+    });
+    $('report').style.display = 'block';
+    render();
+    $('report').scrollIntoView({behavior:'smooth'});
+  } catch (e) {
+    console.error(e);
+    $('error').textContent = 'خطا در خواندن فایل: ' + e.message;
+    $('error').style.display = 'block';
+  }
+}
+
+$('file').addEventListener('change', e => e.target.files[0] && handleFile(e.target.files[0]));
+const drop = $('drop');
+['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hover'); }));
+['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hover'); }));
+drop.addEventListener('drop', e => e.dataTransfer.files[0] && handleFile(e.dataTransfer.files[0]));
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  ACTIVE = t.dataset.tab;
+  render();
+}));
+$('f-user').addEventListener('change', render);
+$('f-dedup').addEventListener('change', render);
+$('btn-csv').addEventListener('click', exportXlsx);
+$('btn-print').addEventListener('click', () => window.print());
+window.addEventListener('beforeprint', () => { if (DATA) render(); });
+</script>
+</body>
+</html>
