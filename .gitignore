@@ -1,1 +1,5 @@
 /.claude
+/shop-bot/config.json
+/shop-bot/bot.log
+/shop-bot/__pycache__/
+*.pyc

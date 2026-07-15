@@ -468,6 +468,10 @@ const faDate = new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',mont
 const faDow  = new Intl.DateTimeFormat('fa-IR',{weekday:'long'});
 function jalali(d){ return faDate.format(d); }
 function timeOf(d){ return d.toTimeString().slice(0,8); }
+function gdate(d){ // تاریخ میلادی محلی (toISOString به UTC می‌برد و بعد از نیمه‌شب تاریخ را عقب می‌اندازد)
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
 function faNum(s){ return String(s).replace(/[0-9]/g, c => '۰۱۲۳۴۵۶۷۸۹'[c]); }
 
 async function inflateBrowser(u8){
@@ -513,12 +517,12 @@ function filteredRows(){
 
 function renderLog(rows){
   if (!rows.length) return '<div class="empty">رکوردی یافت نشد</div>';
-  let h = '<table><thead><tr><th>ردیف</th><th>نام</th><th>شناسه</th><th>تاریخ (شمسی)</th><th>روز</th><th>ساعت</th><th>نوع ثبت</th><th>روش تأیید</th></tr></thead><tbody>';
+  let h = '<table><thead><tr><th>ردیف</th><th>نام</th><th>شناسه</th><th>تاریخ (شمسی)</th><th>تاریخ (میلادی)</th><th>روز</th><th>ساعت</th><th>نوع ثبت</th><th>روش تأیید</th></tr></thead><tbody>';
   rows.forEach((r,i) => {
     const kind = STATUS_KIND[r.status] || 'other';
     const label = STATUS_FA[r.status] ?? ('کد ' + r.status);
     h += `<tr><td>${faNum(i+1)}</td><td>${r.name}</td><td>${faNum(r.pin)}</td>`+
-         `<td class="num">${jalali(r.d)}</td><td>${faDow.format(r.d)}</td>`+
+         `<td class="num">${jalali(r.d)}</td><td class="num">${r.iso.slice(0,10)}</td><td>${faDow.format(r.d)}</td>`+
          `<td class="num">${faNum(timeOf(r.d))}</td>`+
          `<td><span class="badge b-${kind}">${label}</span></td>`+
          `<td>${VERIFY_FA[r.verify] ?? ('کد '+r.verify)}</td></tr>`;
@@ -529,7 +533,7 @@ function renderLog(rows){
 function dailySummary(rows){
   const groups = {};
   for (const r of rows){
-    const key = r.pin + '|' + r.d.toISOString().slice(0,10);
+    const key = r.pin + '|' + gdate(r.d);
     (groups[key] = groups[key] || []).push(r);
   }
   return Object.values(groups).map(g => {
@@ -550,9 +554,9 @@ function fmtDur(ms){
 function renderDaily(rows){
   const days = dailySummary(rows);
   if (!days.length) return '<div class="empty">رکوردی یافت نشد</div>';
-  let h = '<table><thead><tr><th>نام</th><th>تاریخ (شمسی)</th><th>روز</th><th>اولین ثبت</th><th>آخرین ثبت</th><th>مدت حضور*</th><th>تعداد ثبت</th></tr></thead><tbody>';
+  let h = '<table><thead><tr><th>نام</th><th>تاریخ (شمسی)</th><th>تاریخ (میلادی)</th><th>روز</th><th>اولین ثبت</th><th>آخرین ثبت</th><th>مدت حضور*</th><th>تعداد ثبت</th></tr></thead><tbody>';
   days.forEach(x => {
-    h += `<tr><td>${x.name}</td><td class="num">${jalali(x.d)}</td><td>${faDow.format(x.d)}</td>`+
+    h += `<tr><td>${x.name}</td><td class="num">${jalali(x.d)}</td><td class="num">${gdate(x.d)}</td><td>${faDow.format(x.d)}</td>`+
          `<td class="num">${faNum(x.first)}</td><td class="num">${x.last?faNum(x.last):'—'}</td>`+
          `<td>${x.last?fmtDur(x.durMs):'—'}</td><td>${faNum(x.count)}</td></tr>`;
   });
@@ -722,7 +726,7 @@ function buildXlsxBlob(){
   if (ACTIVE === 'daily'){
     headers = ['نام','شناسه','تاریخ (شمسی)','تاریخ میلادی','روز','اولین ثبت','آخرین ثبت','مدت حضور','تعداد ثبت'];
     widths  = [16, 9, 13, 13, 11, 11, 11, 20, 10];
-    data = dailySummary(rows).map(x => [x.name, faNum(x.pin), jalali(x.d), x.d.toISOString().slice(0,10),
+    data = dailySummary(rows).map(x => [x.name, faNum(x.pin), jalali(x.d), gdate(x.d),
       faDow.format(x.d), faNum(x.first), x.last ? faNum(x.last) : '—', x.last ? fmtDur(x.durMs) : '—', x.count]);
     fname = 'گزارش خلاصه روزانه.xlsx'; sheetName = 'خلاصه روزانه';
   } else if (ACTIVE === 'users'){
