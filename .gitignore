@@ -3,3 +3,5 @@
 /shop-bot/bot.log
 /shop-bot/__pycache__/
 *.pyc
+/attendance-viewer/config.json
+/attendance-viewer/__pycache__/

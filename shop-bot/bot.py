@@ -8,7 +8,7 @@
 تنظیمات:   config.json کنار همین فایل
 """
 import json, os, sys, time, gzip, tarfile, sqlite3, tempfile, io, re
-import zipfile
+import zipfile, threading, socket, subprocess, ssl
 import urllib.request, urllib.parse, urllib.error
 from datetime import datetime, timedelta
 
@@ -22,7 +22,10 @@ def load_config():
         cfg = json.load(f)
     missing = [k for k in ('bot_token', 'admin_ids', 'device_ip') if not cfg.get(k)]
     if missing or 'YOUR' in str(cfg.get('bot_token', '')):
-        print('لطفاً ابتدا config.json را کامل کنید: ' + ', '.join(missing or ['bot_token']))
+        try:
+            print('لطفاً ابتدا config.json را کامل کنید: ' + ', '.join(missing or ['bot_token']))
+        except Exception:
+            pass
         sys.exit(1)
     cfg.setdefault('device_port', 4370)
     cfg.setdefault('comm_key', 0)
@@ -34,8 +37,18 @@ def load_config():
 
 def log(msg):
     line = '[%s] %s' % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), msg)
-    print(line)
     try:
+        print(line)  # در اجرای مخفی (pythonw) خروجی چاپ وجود ندارد و نباید کرش کند
+    except Exception:
+        pass
+    try:
+        # جلوگیری از بزرگ‌شدن بی‌حد فایل لاگ (سقف ~۲ مگابایت، نیم مگ آخر نگه داشته می‌شود)
+        if os.path.exists(LOG_PATH) and os.path.getsize(LOG_PATH) > 2_000_000:
+            with open(LOG_PATH, 'rb') as f:
+                f.seek(-500_000, 2)
+                tail = f.read()
+            with open(LOG_PATH, 'wb') as f:
+                f.write(tail)
         with open(LOG_PATH, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
     except OSError:
@@ -61,6 +74,10 @@ def to_jalali(gy, gm, gd):
 
 FA_DIGITS = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
 DOW_FA = ['دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه', 'یکشنبه']  # weekday() 0=Mon
+
+def esc(s):
+    """متن خطا ممکن است < > داشته باشد و HTML تلگرام را خراب کند"""
+    return str(s).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 def fa(s):
     return str(s).translate(FA_DIGITS)
@@ -127,19 +144,18 @@ def fmt_dur(td):
     return fa(m // 60) + ' ساعت و ' + fa(m % 60) + ' دقیقه'
 
 # ---------------------------------------------------------------- اتصال به دستگاه
+DEVICE_LOCK = threading.Lock()  # همزمان فقط یک اتصال به دستگاه
+
 def fetch_from_device(cfg):
     """اتصال به F18 و برگرداندن (rows, users_list)"""
     from zk import ZK
-    zk = ZK(cfg['device_ip'], port=cfg['device_port'], timeout=15,
-            password=cfg['comm_key'], force_udp=False, ommit_ping=True)
-    conn = zk.connect()
-    try:
-        conn.disable_device()
-        users = conn.get_users() or []
-        atts = conn.get_attendance() or []
-    finally:
+    with DEVICE_LOCK:
+        zk = ZK(cfg['device_ip'], port=cfg['device_port'], timeout=8,
+                password=cfg['comm_key'], force_udp=False, ommit_ping=True)
+        conn = zk.connect()
         try:
-            conn.enable_device()
+            users = conn.get_users() or []
+            atts = conn.get_attendance() or []
         finally:
             conn.disconnect()
     names = {str(u.user_id): (u.name or ('عضو ' + str(u.user_id))) for u in users}
@@ -291,10 +307,19 @@ def report_xlsx(rows, users, source_label):
     ])
 
 # ---------------------------------------------------------------- ارسال به وب‌سایت
+def _ssl_context():
+    """در پایتون‌های جدید حالت strict گواهی، برخی گواهی‌های معتبر (مثل Vercel) را رد می‌کند."""
+    ctx = ssl.create_default_context()
+    try:
+        ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
+    except AttributeError:
+        pass
+    return ctx
+
 def push_to_site(cfg, rows, users):
-    """ارسال داده‌ها به سایت (Next.js/Vercel). True یعنی موفق."""
+    """ارسال داده‌ها به سایت (Next.js/Vercel). تعداد رکوردهای جدید را برمی‌گرداند؛ None یعنی سایت تنظیم نشده."""
     if not cfg.get('site_url') or not cfg.get('site_key'):
-        return False
+        return None
     payload = json.dumps({
         'users': [{'pin': u['pin'], 'name': u['name'], 'admin': u['admin']} for u in users],
         'punches': [{'pin': r.pin, 'ts': r.dt.strftime('%Y-%m-%dT%H:%M:%S'),
@@ -308,10 +333,22 @@ def push_to_site(cfg, rows, users):
         'Content-Type': 'application/json',
         'x-upload-key': cfg['site_key'],
     })
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        result = json.load(resp)
-    log('sync به سایت: %s رکورد جدید' % result.get('saved', 0))
-    return True
+    try:
+        try:
+            with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
+                result = json.load(resp)
+        except urllib.error.URLError as e:
+            if not isinstance(getattr(e, 'reason', None), ssl.SSLCertVerificationError):
+                raise
+            log('هشدار: تأیید گواهی SSL ناموفق بود؛ ارسال بدون تأیید گواهی تکرار می‌شود')
+            with urllib.request.urlopen(req, timeout=60, context=ssl._create_unverified_context()) as resp:
+                result = json.load(resp)
+    except Exception as e:
+        # آدرس مقصد را در خطا بیاور تا از روی لاگ معلوم باشد به کجا وصل می‌شود
+        raise RuntimeError('%s ← %s' % (url, e)) from e
+    saved = int(result.get('saved', 0))
+    log('sync به سایت (%s): %s رکورد جدید' % (url, saved))
+    return saved
 
 def try_push_to_site(cfg, rows, users):
     try:
@@ -319,6 +356,10 @@ def try_push_to_site(cfg, rows, users):
     except Exception as e:
         log('site sync error: %s' % e)
         return False
+
+def push_to_site_background(cfg, rows, users):
+    """ارسال به سایت در پس‌زمینه تا پاسخ تلگرام معطل نشود."""
+    threading.Thread(target=try_push_to_site, args=(cfg, rows, users), daemon=True).start()
 
 # ---------------------------------------------------------------- تلگرام
 class Tg:
@@ -448,7 +489,7 @@ def handle_message(tg, cfg, msg):
                              '✅ %s رکورد از بکاپ دستگاه %s' % (fa(len(rows)), serial))
         except Exception as e:
             log('parse_dat error: %s' % e)
-            tg.send_text(chat_id, '❌ خطا در پارس فایل: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ خطا در پارس فایل: %s' % esc(e), KEYBOARD)
         return
 
     if text in ('/start', '/help', 'راهنما'):
@@ -462,16 +503,17 @@ def handle_message(tg, cfg, msg):
         tg.send_text(chat_id, '⏳ در حال دریافت اطلاعات دستگاه و ارسال به سایت…')
         try:
             rows, users = fetch_from_device(cfg)
-            push_to_site(cfg, rows, users)
+            saved = push_to_site(cfg, rows, users)
             tg.send_text(
                 chat_id,
                 '✅ ارسال گزارشات به سایت با موفقیت صورت گرفت.\n'
-                '📊 تعداد رکوردهای بررسی‌شده: %s' % fa(len(rows)),
+                '📊 کل رکوردهای دستگاه: %s\n'
+                '🆕 رکورد جدید اضافه‌شده به سایت: %s' % (fa(len(rows)), fa(saved or 0)),
                 KEYBOARD,
             )
         except Exception as e:
             log('manual site sync error: %s' % e)
-            tg.send_text(chat_id, '❌ ارسال گزارشات به سایت ناموفق بود: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ ارسال گزارشات به سایت ناموفق بود: %s' % esc(e), KEYBOARD)
         return
 
     if text in ('📊 گزارش امروز', 'گزارش امروز', '/today', '🌙 گزارش دیروز', 'گزارش دیروز', '/yesterday'):
@@ -479,19 +521,19 @@ def handle_message(tg, cfg, msg):
         tg.send_text(chat_id, '⏳ در حال اتصال به دستگاه…')
         try:
             rows, users = fetch_from_device(cfg)
-            try_push_to_site(cfg, rows, users)
+            push_to_site_background(cfg, rows, users)
             rows = dedup(rows, cfg['dedup_seconds'])
             tg.send_text(chat_id, yesterday_text(rows) if wants_yesterday else today_text(rows), KEYBOARD)
         except Exception as e:
             log('device error: %s' % e)
-            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % esc(e), KEYBOARD)
         return
 
     if text in ('📅 گزارش کامل', 'گزارش کامل', 'گزارش', '/report'):
         tg.send_text(chat_id, '⏳ در حال اتصال به دستگاه و ساخت گزارش…')
         try:
             rows, users = fetch_from_device(cfg)
-            try_push_to_site(cfg, rows, users)
+            push_to_site_background(cfg, rows, users)
             rows = dedup(rows, cfg['dedup_seconds'])
             blob = report_xlsx(rows, users, 'دریافت مستقیم از دستگاه %s' % cfg['device_ip'])
             first = jdate(rows[0].dt) if rows else '—'
@@ -500,7 +542,7 @@ def handle_message(tg, cfg, msg):
                              '✅ %s رکورد | از %s تا %s' % (fa(len(rows)), first, last))
         except Exception as e:
             log('device error: %s' % e)
-            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % esc(e), KEYBOARD)
         return
 
     if text in ('👥 اعضا', 'اعضا', '/users'):
@@ -515,7 +557,7 @@ def handle_message(tg, cfg, msg):
             tg.send_text(chat_id, '\n'.join(lines), KEYBOARD)
         except Exception as e:
             log('device error: %s' % e)
-            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ دستگاه در دسترس نیست: %s' % esc(e), KEYBOARD)
         return
 
     if text in ('ℹ️ وضعیت دستگاه', 'وضعیت', '/status'):
@@ -535,36 +577,126 @@ def handle_message(tg, cfg, msg):
                          '🕐 ساعت دستگاه: %s %s\n⚡ زمان پاسخ: %s ms'
                          % (sn, fw, jdate(dt), fa(dt.strftime('%H:%M:%S')), fa(ms)), KEYBOARD)
         except Exception as e:
-            tg.send_text(chat_id, '❌ اتصال برقرار نشد: %s' % e, KEYBOARD)
+            tg.send_text(chat_id, '❌ اتصال برقرار نشد: %s' % esc(e), KEYBOARD)
         return
 
     tg.send_text(chat_id, 'دستور ناشناخته. از دکمه‌های زیر استفاده کنید 👇', KEYBOARD)
 
 def auto_sync(cfg, state):
-    """هر چند دقیقه یک‌بار داده‌ها را از دستگاه کشیده و به سایت می‌فرستد."""
+    """هر چند دقیقه یک‌بار، در یک رشتهٔ جدا (تا ربات کند نشود) داده‌ها را به سایت می‌فرستد."""
     if not cfg.get('site_url') or not cfg.get('site_key'):
         return
     interval = max(1, int(cfg.get('site_sync_minutes', 15))) * 60
     if time.time() - state.get('last_sync', 0) < interval:
         return
+    worker = state.get('sync_thread')
+    if worker and worker.is_alive():
+        return
     state['last_sync'] = time.time()
+
+    def work():
+        try:
+            rows, users = fetch_from_device(cfg)
+            push_to_site(cfg, rows, users)
+        except Exception as e:
+            log('auto sync error: %s' % e)
+
+    thread = threading.Thread(target=work, daemon=True)
+    state['sync_thread'] = thread
+    thread.start()
+
+_instance_lock_socket = None
+
+def ensure_single_instance():
+    """اگر نسخهٔ دیگری از ربات در حال اجرا باشد، این نسخه بی‌سروصدا خارج می‌شود."""
+    global _instance_lock_socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        rows, users = fetch_from_device(cfg)
-        push_to_site(cfg, rows, users)
+        s.bind(('127.0.0.1', 47391))
+        s.listen(1)
+        _instance_lock_socket = s
+        return True
+    except OSError:
+        return False
+
+def ensure_pyzk():
+    """اگر کتابخانهٔ اتصال به دستگاه نصب نباشد، خودکار نصبش می‌کند."""
+    try:
+        import zk  # noqa: F401
+        return True
+    except ImportError:
+        log('pyzk نصب نیست؛ در حال نصب خودکار…')
+        try:
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'pyzk'],
+                                  timeout=300)
+            import zk  # noqa: F401
+            log('pyzk با موفقیت نصب شد')
+            return True
+        except Exception as e:
+            log('نصب خودکار pyzk ناموفق بود: %s' % e)
+            return False
+
+def reload_config_if_changed(cfg, state):
+    """اگر config.json ویرایش شده باشد، بدون نیاز به ری‌استارت بازخوانی می‌شود."""
+    try:
+        mtime = os.path.getmtime(CONFIG_PATH)
+    except OSError:
+        return
+    if mtime == state.get('cfg_mtime'):
+        return
+    state['cfg_mtime'] = mtime
+    if 'cfg_loaded_once' not in state:
+        state['cfg_loaded_once'] = True
+        return  # اولین بار — همان است که load شد
+    try:
+        with open(CONFIG_PATH, encoding='utf-8') as f:
+            fresh = json.load(f)
+        fresh.setdefault('device_port', 4370)
+        fresh.setdefault('comm_key', 0)
+        fresh.setdefault('dedup_seconds', 120)
+        fresh.setdefault('site_url', '')
+        fresh.setdefault('site_key', '')
+        fresh.setdefault('site_sync_minutes', 15)
+        cfg.clear()
+        cfg.update(fresh)
+        state['last_sync'] = 0  # با تنظیمات تازه فوراً یک sync انجام بده
+        log('config.json بازخوانی شد (site_url=%s)' % (cfg.get('site_url') or '—'))
     except Exception as e:
-        log('auto sync error: %s' % e)
+        log('خطا در بازخوانی config: %s' % e)
+
+HEARTBEAT_LIMIT = 300  # اگر حلقهٔ اصلی ۵ دقیقه کار نکند، برنامه هنگ کرده است
+
+def start_hang_watchdog(state):
+    """اگر برنامه هنگ کند (زنده ولی قفل)، خودش را می‌بندد تا نگهبان ویندوز نسخهٔ سالم را اجرا کند."""
+    def monitor():
+        while True:
+            time.sleep(60)
+            if time.time() - state.get('heartbeat', time.time()) > HEARTBEAT_LIMIT:
+                log('برنامه هنگ کرده بود — راه‌اندازی مجدد خودکار')
+                os._exit(2)
+    threading.Thread(target=monitor, daemon=True).start()
 
 def main():
+    if not ensure_single_instance():
+        return  # نسخهٔ دیگری در حال اجراست
+    # همهٔ اتصال‌های HTTPS (تلگرام، سایت، دانلود) از گواهی سازگار استفاده کنند
+    urllib.request.install_opener(
+        urllib.request.build_opener(urllib.request.HTTPSHandler(context=_ssl_context())))
     cfg = load_config()
+    ensure_pyzk()
     tg = Tg(cfg['bot_token'])
-    state = {'last_sync': 0}
+    state = {'last_sync': 0, 'heartbeat': time.time()}
+    start_hang_watchdog(state)
     log('ربات شروع شد — دستگاه %s:%s%s' % (
         cfg['device_ip'], cfg['device_port'],
         ' | sync سایت هر %s دقیقه' % cfg['site_sync_minutes'] if cfg.get('site_url') else ''))
     while True:
+        state['heartbeat'] = time.time()
         try:
+            reload_config_if_changed(cfg, state)
             auto_sync(cfg, state)
             for up in tg.get_updates():
+                state['heartbeat'] = time.time()
                 msg = up.get('message')
                 if msg:
                     try:
